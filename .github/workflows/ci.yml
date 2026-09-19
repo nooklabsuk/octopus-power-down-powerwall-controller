@@ -25,4 +25,4 @@ jobs:
         run: docker build --tag powerdown-controller:ci .
 
       - name: Validate Compose configuration
-        run: docker compose --env-file .env.example config --quiet
+        run: cp .env.example .env && docker compose config --quiet
