@@ -12,4 +12,5 @@ state/
 __pycache__/
 *.py[cod]
 .coverage
+coverage.xml
 htmlcov/

@@ -26,6 +26,14 @@ jobs:
           python -m pip install coverage
           coverage run --source=. -m unittest discover -s tests -t . -v
           coverage report --show-missing --fail-under=70
+          coverage xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Build Docker image
         run: docker build --tag powerdown-controller:ci .
