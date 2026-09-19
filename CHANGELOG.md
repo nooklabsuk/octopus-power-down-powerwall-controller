@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.4.2...v0.5.0) (2026-09-19)
+
+
+### Features
+
+* poll Myenergi directly for export cap ([0006f3b](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/0006f3b0bdfa7baa8b2e6083dd1a4e8037982958))
+
 ## [0.4.2](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.4.1...v0.4.2) (2026-09-19)
 
 
