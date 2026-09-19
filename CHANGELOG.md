@@ -1,3 +1,10 @@
+## [0.3.3](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.3.2...v0.3.3) (2026-09-19)
+
+
+### Bug Fixes
+
+* validate tariff baseline at startup ([7cfa077](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/7cfa07787d8eaa22e7d4ec79972146bcaf505cb9))
+
 ## [0.3.2](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.3.1...v0.3.2) (2026-09-19)
 
 
