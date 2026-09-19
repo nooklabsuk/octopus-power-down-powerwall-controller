@@ -153,10 +153,18 @@ ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:<version>
 For example, replace `build: .` in `compose.yaml` with a pinned release image:
 
 ```yaml
-image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:v0.4.0
+image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:${POWERDOWN_CONTROLLER_VERSION}
+```
+
+Set the selected pinned release in `.env`:
+
+```dotenv
+POWERDOWN_CONTROLLER_VERSION=v0.4.0
 ```
 
 Do not use `latest` for unattended energy control. Pin a tested release version.
+The repository does not chase release tags in `compose.yaml`; update this local
+variable deliberately after reviewing each release.
 
 ## Configuration
 
