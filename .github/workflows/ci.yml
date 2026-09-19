@@ -20,7 +20,7 @@ jobs:
           python-version: "3.14"
 
       - name: Compile Python
-        run: python -m py_compile controller.py emergency_restore.py tests/test_controller.py
+        run: python -m py_compile controller.py emergency_restore.py tools/export_tariff.py tests/test_controller.py
 
       - name: Run unit tests with coverage
         run: |

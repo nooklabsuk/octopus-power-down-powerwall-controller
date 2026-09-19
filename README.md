@@ -80,11 +80,25 @@ because an upcoming Power Down event is visible on a calendar.
 3. Set every value in `.env`. It contains a Home Assistant token and is ignored
    by Git.
 
-4. Save the complete current Tesla tariff baseline here:
+4. Export your current Tesla tariff baseline:
+
+   ```sh
+   set -a
+   source .env
+   set +a
+   python3 tools/export_tariff.py
+   ```
+
+   This calls Home Assistant's Teslemetry diagnostics endpoint, reconstructs the
+   complete `tariff_content_v2` object, and writes:
 
    ```text
    tariff/teslemetry-normal-tariff.json
    ```
+
+   Inspect this file before continuing. It must contain `energy_charges`,
+   `seasons`, and a nested `sell_tariff`. Do not substitute a manually written
+   fragment.
 
 5. Restrict local secrets and tariff data:
 
@@ -134,6 +148,7 @@ UUID at the end of the browser URL is its Home Assistant device ID.
 | --- | --- |
 | `HA_URL` | Home Assistant URL reachable from the Docker container. |
 | `HA_TOKEN` | Dedicated long-lived Home Assistant token. |
+| `TESLEMETRY_CONFIG_ENTRY_ID` | Config-entry ID for the Teslemetry integration. Find it in the browser URL after opening **Settings -> Devices & services -> Teslemetry**. |
 | `TESLEMETRY_DEVICE_ID` | Home Assistant device ID for the Teslemetry Powerwall device. |
 | `POWER_DOWN_CALENDAR` | Calendar entity that is `on` during an active joined event. |
 | `EXPORT_ENERGY_SENSOR` | Live cumulative grid-export sensor in kWh, not an instantaneous W/kW sensor. |
@@ -147,11 +162,10 @@ UUID at the end of the browser URL is its Home Assistant device ID.
 
 The controller never builds a tariff from scratch. It modifies an in-memory copy
 of your complete saved baseline, then submits that baseline again to restore the
-normal configuration.
+normal configuration. Use `tools/export_tariff.py` in the Quick Start to export
+the baseline from Teslemetry diagnostics.
 
-Export the tariff from Teslemetry diagnostics or another trusted source. Verify
-the JSON includes `energy_charges`, `seasons`, and a nested `sell_tariff`. Tesla
-expects a complete valid schedule, not a partial tariff fragment.
+Tesla expects a complete valid schedule, not a partial tariff fragment.
 
 Do not commit the tariff file. It may reveal utility and account configuration.
 

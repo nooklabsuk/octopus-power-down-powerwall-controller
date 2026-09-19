@@ -15,7 +15,6 @@ SPEC = importlib.util.spec_from_file_location("controller", MODULE_PATH)
 controller = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(controller)
 
-
 def tariff() -> dict:
     return {
         "name": "Test",
