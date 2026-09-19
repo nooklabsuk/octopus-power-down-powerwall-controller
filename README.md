@@ -150,21 +150,23 @@ Each semantic GitHub release publishes a multi-architecture image for
 ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:<version>
 ```
 
-For example, replace `build: .` in `compose.yaml` with a pinned release image:
+The included `compose.yaml` builds the checked-out source by default. To use a
+reviewed prebuilt release instead, replace its `build: .` line with:
 
 ```yaml
 image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:${POWERDOWN_CONTROLLER_VERSION}
 ```
 
-Set the selected pinned release in `.env`:
+Then set the selected pinned release in your ignored `.env` file:
 
 ```dotenv
-POWERDOWN_CONTROLLER_VERSION=v0.4.0
+POWERDOWN_CONTROLLER_VERSION=vX.Y.Z
 ```
 
 Do not use `latest` for unattended energy control. Pin a tested release version.
 The repository does not chase release tags in `compose.yaml`; update this local
-variable deliberately after reviewing each release.
+variable deliberately after reviewing each release. Copy the exact `vX.Y.Z` tag
+from the [GitHub Releases page](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/releases).
 
 ## Configuration
 
