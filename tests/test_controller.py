@@ -35,6 +35,16 @@ class AsyncClientContext:
     async def __aexit__(self, *args):
         return None
 
+    async def get(self, *args, **kwargs):
+        return DirectorResponse()
+
+
+class DirectorResponse:
+    headers = {"x_myenergi-asn": "s18.myenergi.net"}
+
+    def raise_for_status(self):
+        return None
+
 
 class ControllerTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -136,6 +146,20 @@ class ControllerTest(unittest.TestCase):
         )
         to_thread.assert_awaited_once_with(connection.return_value.checkAndUpdateToken)
         client.refresh.assert_awaited_once()
+
+    @patch.object(controller, "to_thread", new_callable=AsyncMock)
+    @patch.object(controller, "MyenergiClient")
+    @patch.object(controller, "Connection")
+    @patch.object(controller.httpx, "AsyncClient", return_value=AsyncClientContext())
+    def test_direct_myenergi_read_rejects_missing_director_endpoint(
+        self, async_client, connection, myenergi_client, to_thread
+    ) -> None:
+        async_client.return_value.get = AsyncMock(return_value=type("Response", (), {"headers": {}, "raise_for_status": lambda self: None})())
+
+        with self.assertRaisesRegex(RuntimeError, "ASN endpoint"):
+            __import__("asyncio").run(controller._read_myenergi_grid_power())
+
+        to_thread.assert_not_awaited()
 
     @patch.object(controller, "datetime")
     @patch.object(controller, "restore")

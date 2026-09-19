@@ -64,6 +64,21 @@ async def _read_myenergi_grid_power() -> float:
             timeout=10,
             asyncClient=client,
         )
+        # Myenergi's director currently returns the ASN header lower-cased by
+        # HTTP clients, but pymyenergi 0.2.3 checks only its original casing.
+        # Resolve the regional endpoint explicitly before the library refresh.
+        response = await client.get(
+            f"{connection.director_url}/cgi-jstatus-E",
+            auth=httpx.DigestAuth(connection.username, connection.password),
+            headers=connection.headers,
+            timeout=connection.timeout,
+        )
+        response.raise_for_status()
+        asn = response.headers.get("x_myenergi-asn")
+        if not asn:
+            raise RuntimeError("Myenergi director response did not include an ASN endpoint")
+        connection.base_url = f"https://{asn}"
+        connection.do_query_asn = False
         await to_thread(connection.checkAndUpdateToken)
         myenergi = MyenergiClient(connection)
         await myenergi.refresh()

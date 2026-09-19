@@ -88,10 +88,14 @@ because an upcoming Power Down event is visible on a calendar.
 3. Set every value in `.env`. It contains a Home Assistant token and Myenergi
    API key and is ignored by Git.
 
-   Get the Myenergi values from `myaccount.myenergi.com` under **Products**:
-   use the hub serial number for `MYENERGI_USERNAME` and generate an API key for
-   `MYENERGI_PASSWORD`. Do not reuse a copied Home Assistant integration
-   configuration or publish either value.
+  Get the Myenergi values from `myaccount.myenergi.com` under **Products**:
+  use the hub serial number for `MYENERGI_USERNAME` and generate an API key for
+  `MYENERGI_PASSWORD`. Do not reuse a copied Home Assistant integration
+  configuration or publish either value.
+
+   The controller resolves Myenergi's regional cloud endpoint from the director
+   service on each direct read. It therefore continues to work if Myenergi moves
+   the hub between regional API servers.
 
 4. Export your current Tesla tariff baseline:
 
