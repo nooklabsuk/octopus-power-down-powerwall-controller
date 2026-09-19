@@ -1,3 +1,10 @@
+## [0.4.2](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.4.1...v0.4.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* configure release image version locally ([70ab018](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/70ab0180890d827da027052db7a7ef4bc3d1ee99))
+
 ## [0.4.1](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.4.0...v0.4.1) (2026-09-19)
 
 
