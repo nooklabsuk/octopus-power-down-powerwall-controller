@@ -1,3 +1,10 @@
+## [0.2.3](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.2.2...v0.2.3) (2026-09-19)
+
+
+### Bug Fixes
+
+* allow Codecov coverage upload ([e199bff](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/e199bffb8c30e2245e48aff1aab5f0d369160828))
+
 ## [0.2.2](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.2.1...v0.2.2) (2026-09-19)
 
 
