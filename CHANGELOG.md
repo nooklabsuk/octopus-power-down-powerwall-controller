@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.5.0...v0.6.0) (2026-09-19)
+
+
+### Features
+
+* snapshot live tariff and meter export directly ([7c08c14](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/7c08c14ffd80d3930b29dc691b15785ca97a3df3))
+
 # [0.5.0](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.4.2...v0.5.0) (2026-09-19)
 
 
