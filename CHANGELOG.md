@@ -1,3 +1,10 @@
+## [0.2.2](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.2.1...v0.2.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* require Codecov token for coverage upload ([e421aca](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/e421aca66bd51d0777ee22779fd946a8af31530e))
+
 ## [0.2.1](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.2.0...v0.2.1) (2026-09-19)
 
 
