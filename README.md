@@ -1,4 +1,10 @@
-# Octopus Power Down Powerwall Controller
+<p align="center">
+  <img src="assets/power-down-controller.svg" width="720" alt="Octopus Power Down Powerwall Controller">
+</p>
+
+<h1 align="center">Octopus Power Down Powerwall Controller</h1>
+
+<p align="center">Capped Tesla Powerwall 3 export during active Octopus Energy Power Down events.</p>
 
 [![CI](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/ci.yml)
 [![Security](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/security.yml/badge.svg)](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/security.yml)
@@ -71,8 +77,6 @@ because an upcoming Power Down event is visible on a calendar.
   `on` only for an active event you joined.
 - Myenergi hub serial number and API key. The controller polls current signed
   grid power directly rather than relying on Home Assistant entity timestamps.
-- A complete, known-good Tesla `tariff_content_v2` baseline containing a nested
-  `sell_tariff`.
 - A dedicated Home Assistant long-lived token.
 
 ## Quick Start
@@ -97,53 +101,23 @@ because an upcoming Power Down event is visible on a calendar.
    service on each direct read. It therefore continues to work if Myenergi moves
    the hub between regional API servers.
 
-4. Export your current Tesla tariff baseline:
-
-   ```sh
-   set -a
-   source .env
-   set +a
-   python3 tools/export_tariff.py
-   ```
-
-   This calls Home Assistant's Teslemetry diagnostics endpoint, reconstructs the
-   complete `tariff_content_v2` object, and writes:
-
-   ```text
-   tariff/teslemetry-normal-tariff.json
-   ```
-
-   Inspect this file before continuing. It must contain `energy_charges`,
-   `seasons`, and a nested `sell_tariff`. Do not substitute a manually written
-   fragment.
-
-5. Restrict local secrets and tariff data:
-
-   ```sh
-   chmod 600 .env
-   chmod 755 tariff
-   chmod 644 tariff/teslemetry-normal-tariff.json
-   ```
-
-   The container runs as an unprivileged user and mounts the whole `tariff/`
-   directory read-only. The tariff file must therefore be readable by that user.
-   It contains tariff configuration, not credentials; keep the directory ignored
-   by Git and do not publish it.
-
-6. Start the controller:
+4. Start the controller:
 
    ```sh
    docker compose up --build -d
    ```
 
-7. Watch startup and idle logs:
+5. Watch startup and idle logs:
 
    ```sh
    docker compose logs -f
    ```
 
 The controller emits an idle heartbeat every minute. It logs export progress and
-the restoration reason during an active event.
+the restoration reason during an active event. Startup logs include the running
+container version, export target, timeout, polling interval, tariff name/utility,
+and a read-only direct Myenergi grid-power health check. Logs never include API
+keys, tokens, serial numbers, account IDs, or full entity IDs.
 
 ### Prebuilt Images
 
@@ -182,7 +156,7 @@ UUID at the end of the browser URL is its Home Assistant device ID.
 | --- | --- |
 | `HA_URL` | Home Assistant URL reachable from the Docker container. |
 | `HA_TOKEN` | Dedicated long-lived Home Assistant token. |
-| `TESLEMETRY_CONFIG_ENTRY_ID` | Config-entry ID for the Teslemetry integration. Find it in the browser URL after opening **Settings -> Devices & services -> Teslemetry**. |
+| `TESLEMETRY_CONFIG_ENTRY_ID` | Config-entry ID for the Teslemetry integration. Find it in the browser URL after opening **Settings -> Devices & services -> Teslemetry**. Used to snapshot the live tariff before an event. |
 | `TESLEMETRY_DEVICE_ID` | Home Assistant device ID for the Teslemetry Powerwall device. |
 | `POWER_DOWN_CALENDAR` | Calendar entity that is `on` during an active joined event. |
 | `OPERATION_MODE_ENTITY` | Teslemetry Powerwall operation-mode `select` entity. |
@@ -195,23 +169,15 @@ UUID at the end of the browser URL is its Home Assistant device ID.
 | `EXPORT_RATE_PERIOD` | Existing tariff period to temporarily alter, for example `PARTIAL_PEAK`. |
 | `TEMPORARY_SELL_RATE` | Temporary sell rate. Tesla may reject it if it exceeds the matching buy rate. |
 
-## Tariff Baseline
+## Live Tariff Snapshot
 
-The controller never builds a tariff from scratch. It modifies an in-memory copy
-of your complete saved baseline, then submits that baseline again to restore the
-normal configuration. Use `tools/export_tariff.py` in the Quick Start to export
-the baseline from Teslemetry diagnostics.
+No manual tariff file is required. Immediately before each event, the controller
+reads the complete live `tariff_content_v2` from Teslemetry diagnostics, persists
+that snapshot in its active-session file, and modifies an in-memory copy for the
+temporary export tariff. It restores the exact saved snapshot on every stop path.
 
-Tesla/Teslemetry accepts the restore request asynchronously. The controller
-verifies that the original operation mode returns before clearing an active
-session; review the Tesla app or Teslemetry tariff entities after a first live
-event to confirm your tariff has also returned as expected.
-
-Tesla expects a complete valid schedule, not a partial tariff fragment.
-
-Do not commit the tariff file. It may reveal utility and account configuration.
-If the baseline is missing or invalid, the container exits at startup rather than
-waiting until an event to fail.
+If Teslemetry cannot provide one complete live tariff with a nested `sell_tariff`,
+the controller fails closed and does not change the Powerwall.
 
 ## How It Stops
 

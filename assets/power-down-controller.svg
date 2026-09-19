@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" role="img" aria-labelledby="title description">
+  <title id="title">Octopus Power Down Powerwall Controller</title>
+  <desc id="description">A battery connected to an electrical grid with a controlled export arrow.</desc>
+  <rect width="720" height="180" rx="24" fill="#0b1426"/>
+  <path d="M64 42h112c14 0 26 12 26 26v44c0 14-12 26-26 26H64c-14 0-26-12-26-26V68c0-14 12-26 26-26Z" fill="#41bdf5"/>
+  <path d="M202 76h18v28h-18z" fill="#41bdf5"/>
+  <path d="M94 59v62M125 59v62M156 59v62" stroke="#0b1426" stroke-width="10" stroke-linecap="round"/>
+  <path d="M275 90h132" stroke="#41bdf5" stroke-width="10" stroke-linecap="round"/>
+  <path d="m377 66 30 24-30 24" fill="none" stroke="#41bdf5" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M455 54h118v76H455zM479 78h70M479 105h70M597 54h40v76h-40M607 72h20M607 94h20M607 116h20" fill="none" stroke="#f6c945" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="38" y="166" fill="#a8b6cc" font-family="Arial, Helvetica, sans-serif" font-size="18" letter-spacing="3">POWER DOWN</text>
+  <text x="275" y="158" fill="#f5f7fb" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700">CAPPED GRID EXPORT</text>
+</svg>

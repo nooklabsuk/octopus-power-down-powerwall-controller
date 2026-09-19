@@ -51,13 +51,10 @@ class ControllerTest(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.state_path = Path(self.tempdir.name) / "active-session.json"
         self.completed_path = Path(self.tempdir.name) / "completed-event.json"
-        self.tariff_path = Path(self.tempdir.name) / "tariff.json"
-        self.tariff_path.write_text(json.dumps(tariff()))
         self.paths = patch.multiple(
             controller,
             STATE_PATH=self.state_path,
             COMPLETED_PATH=self.completed_path,
-            TARIFF_PATH=self.tariff_path,
         )
         self.paths.start()
         self.environment = patch.dict(
@@ -65,6 +62,7 @@ class ControllerTest(unittest.TestCase):
             {
                 "HA_URL": "http://homeassistant.test",
                 "HA_TOKEN": "test-token",
+                "TESLEMETRY_CONFIG_ENTRY_ID": "test-entry",
                 "TESLEMETRY_DEVICE_ID": "test-device",
                 "POWER_DOWN_CALENDAR": "calendar.power_down",
                 "OPERATION_MODE_ENTITY": "select.operation_mode",
@@ -85,20 +83,46 @@ class ControllerTest(unittest.TestCase):
         self.paths.stop()
         self.tempdir.cleanup()
 
-    def test_baseline_requires_sell_tariff(self) -> None:
-        self.tariff_path.write_text(json.dumps({"name": "invalid"}))
+    @patch.object(controller, "request")
+    def test_live_tariff_reconstructs_diagnostics(self, request) -> None:
+        request.return_value = {
+            "data": {
+                "energysites": [
+                    {
+                        "info": {
+                            "tariff_content_v2_version": 1,
+                            "tariff_content_v2_energy_charges": {"Summer": {}},
+                            "tariff_content_v2_seasons": {"Summer": {}},
+                            "tariff_content_v2_sell_tariff_energy_charges": {"Summer": {}},
+                            "tariff_content_v2_sell_tariff_seasons": {"Summer": {}},
+                        }
+                    }
+                ]
+            }
+        }
 
+        snapshot = controller.live_tariff()
+
+        self.assertEqual(snapshot["version"], 1)
+        self.assertEqual(snapshot["sell_tariff"]["seasons"], {"Summer": {}})
+
+    @patch.object(controller, "myenergi_grid_power", return_value=15)
+    @patch.object(controller, "LOGGER")
+    def test_startup_log_reports_safe_operational_details(self, logger, grid_power) -> None:
+        with patch.dict(os.environ, {"POWERDOWN_CONTROLLER_VERSION": "v1.2.3"}):
+            controller.log_startup()
+
+        message, *values = logger.info.call_args.args
+        self.assertIn("target_kwh=%.3f", message)
+        self.assertIn("initial_grid_power_w=%.1f", message)
+        self.assertEqual(logger.info.call_count, 2)
+        self.assertIn("v1.2.3", str(logger.info.call_args_list))
+        self.assertNotIn("test-key", str(logger.info.call_args))
+
+    @patch.object(controller, "request", return_value={"data": {"energysites": [{"info": {}}]}})
+    def test_live_tariff_rejects_missing_sell_tariff(self, request) -> None:
         with self.assertRaisesRegex(RuntimeError, "sell_tariff"):
-            controller.baseline()
-
-    @patch.object(controller, "time")
-    def test_main_fails_before_monitoring_when_baseline_is_invalid(self, time) -> None:
-        self.tariff_path.write_text(json.dumps({"name": "invalid"}))
-
-        with self.assertRaisesRegex(RuntimeError, "sell_tariff"):
-            controller.main()
-
-        time.sleep.assert_not_called()
+            controller.live_tariff()
 
     def test_session_and_completed_event_round_trip(self) -> None:
         self.assertIsNone(controller.read_session())
@@ -127,6 +151,14 @@ class ControllerTest(unittest.TestCase):
     def test_reads_current_myenergi_grid_power_directly(self, read_power) -> None:
         self.assertEqual(controller.myenergi_grid_power(), -1_234)
         read_power.assert_awaited_once()
+
+    @patch.object(controller, "_read_myenergi_grid_power", new_callable=AsyncMock, side_effect=RuntimeError("API down"))
+    @patch.object(controller, "LOGGER")
+    def test_direct_myenergi_failure_logs_root_cause(self, logger, read_power) -> None:
+        with self.assertRaisesRegex(RuntimeError, "API down"):
+            controller.myenergi_grid_power()
+
+        logger.exception.assert_called_once_with("Direct Myenergi grid-power read failed")
 
     @patch.object(controller, "to_thread", new_callable=AsyncMock)
     @patch.object(controller, "MyenergiClient")
@@ -198,8 +230,9 @@ class ControllerTest(unittest.TestCase):
     @patch.object(controller, "call_service")
     @patch.object(controller, "myenergi_grid_power", return_value=0)
     @patch.object(controller, "state")
+    @patch.object(controller, "live_tariff", return_value=tariff())
     def test_start_event_persists_before_powerwall_writes(
-        self, state, myenergi_grid_power, call_service
+        self, live_tariff, state, myenergi_grid_power, call_service
     ) -> None:
         state.return_value = {"state": "self_consumption"}
 
@@ -209,6 +242,7 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(session["exported_kwh"], 0)
         self.assertEqual(session["last_grid_power_w"], 0)
         self.assertEqual(session["original_mode"], "self_consumption")
+        self.assertEqual(session["tariff_snapshot"], tariff())
         self.assertEqual(call_service.call_count, 2)
         self.assertEqual(call_service.call_args_list[0].args[:2], ("teslemetry", "time_of_use"))
         self.assertEqual(call_service.call_args_list[1].args[:2], ("select", "select_option"))
@@ -258,10 +292,13 @@ class ControllerTest(unittest.TestCase):
     @patch.object(controller, "state", return_value={"state": "self_consumption"})
     @patch.object(controller, "call_service")
     def test_restore_reapplies_tariff_and_original_mode(self, call_service, state) -> None:
+        snapshot = tariff()
+        snapshot["name"] = "Saved at event start"
         controller.write_session(
             {
                 "event_start": "event",
                 "original_mode": "self_consumption",
+                "tariff_snapshot": snapshot,
             }
         )
 
@@ -271,19 +308,39 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(json.loads(self.completed_path.read_text())["event_start"], "event")
         self.assertEqual(call_service.call_count, 2)
         self.assertEqual(call_service.call_args_list[0].args[:2], ("teslemetry", "time_of_use"))
+        self.assertEqual(call_service.call_args_list[0].args[2]["tou_settings"], snapshot)
         self.assertEqual(call_service.call_args_list[1].args[:2], ("select", "select_option"))
 
     @patch.object(controller, "time")
     @patch.object(controller, "state", return_value={"state": "autonomous"})
     @patch.object(controller, "call_service")
     def test_restore_preserves_session_when_mode_never_returns(self, call_service, state, time) -> None:
-        controller.write_session({"event_start": "event", "original_mode": "self_consumption"})
+        controller.write_session(
+            {
+                "event_start": "event",
+                "original_mode": "self_consumption",
+                "tariff_snapshot": tariff(),
+            }
+        )
 
         with self.assertRaisesRegex(RuntimeError, "did not return"):
             controller.restore("test")
 
         self.assertTrue(self.state_path.exists())
         self.assertFalse(self.completed_path.exists())
+
+    @patch.object(controller, "state", return_value={"state": "self_consumption"})
+    @patch.object(controller, "call_service", side_effect=RuntimeError("service error"))
+    @patch.object(controller, "LOGGER")
+    def test_restore_logs_failed_requests(self, logger, call_service, state) -> None:
+        controller.write_session(
+            {"event_start": "event", "original_mode": "self_consumption", "tariff_snapshot": tariff()}
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "tariff restore"):
+            controller.restore("test")
+
+        self.assertEqual(logger.exception.call_count, 2)
 
     @patch.object(controller, "restore")
     @patch.object(controller, "calendar", return_value=(True, None, None))
@@ -317,8 +374,9 @@ class ControllerTest(unittest.TestCase):
     @patch.object(controller, "call_service", side_effect=RuntimeError("Tesla rejected request"))
     @patch.object(controller, "myenergi_grid_power", return_value=0)
     @patch.object(controller, "state", return_value={"state": "self_consumption"})
+    @patch.object(controller, "live_tariff", return_value=tariff())
     def test_start_event_restores_when_temporary_tariff_fails(
-        self, state, myenergi_grid_power, call_service, restore
+        self, live_tariff, state, myenergi_grid_power, call_service, restore
     ) -> None:
         with self.assertRaisesRegex(RuntimeError, "Tesla rejected request"):
             controller.start_event("event", "end")

@@ -1,10 +1,12 @@
 services:
   powerdown-controller:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${POWERDOWN_CONTROLLER_VERSION:-dev}
     container_name: powerdown-controller
     env_file:
       - .env
     volumes:
       - ./state:/state
-      - ./tariff:/tariff:ro
     restart: unless-stopped

@@ -18,12 +18,12 @@ from pymyenergi.connection import Connection
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger("powerdown_controller")
+# Digest authentication can make several expected 401/200 exchanges per poll.
+# Keep those transport details out of normal controller logs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 STATE_PATH = Path("/state/active-session.json")
 COMPLETED_PATH = Path("/state/completed-event.json")
-TARIFF_PATH = Path("/tariff/teslemetry-normal-tariff.json")
-
-
 def setting(name: str, default: str | None = None) -> str:
     value = os.environ.get(name, default or "").strip()
     if not value:
@@ -87,7 +87,11 @@ async def _read_myenergi_grid_power() -> float:
 
 def myenergi_grid_power() -> float:
     """Read current signed grid power directly from Myenergi's cloud API."""
-    return run(_read_myenergi_grid_power())
+    try:
+        return run(_read_myenergi_grid_power())
+    except Exception:
+        LOGGER.exception("Direct Myenergi grid-power read failed")
+        raise
 
 
 def export_energy_kwh(
@@ -104,11 +108,46 @@ def call_service(domain: str, service: str, data: dict) -> None:
     request(f"/api/services/{domain}/{service}", "POST", data)
 
 
-def baseline() -> dict:
-    tariff = json.loads(TARIFF_PATH.read_text())
+def live_tariff() -> dict:
+    diagnostics = request(
+        f"/api/diagnostics/config_entry/{setting('TESLEMETRY_CONFIG_ENTRY_ID')}"
+    )
+    try:
+        sites = diagnostics["data"]["energysites"]
+        if len(sites) != 1:
+            raise RuntimeError(f"Expected one Teslemetry energy site, found {len(sites)}")
+        info = sites[0]["info"]
+    except (KeyError, TypeError) as err:
+        raise RuntimeError("Teslemetry diagnostics did not contain energy-site data") from err
+
+    prefix = "tariff_content_v2_"
+    sell_prefix = f"{prefix}sell_tariff_"
+    tariff = {
+        key.removeprefix(prefix): value
+        for key, value in info.items()
+        if key.startswith(prefix) and not key.startswith(sell_prefix)
+    }
+    tariff["sell_tariff"] = {
+        key.removeprefix(sell_prefix): value
+        for key, value in info.items()
+        if key.startswith(sell_prefix)
+    }
     if not tariff.get("sell_tariff"):
-        raise RuntimeError("Tariff baseline has no sell_tariff")
+        raise RuntimeError("Live Teslemetry tariff has no sell_tariff")
     return tariff
+
+
+def log_startup() -> None:
+    grid_power_w = myenergi_grid_power()
+    version = setting("POWERDOWN_CONTROLLER_VERSION", "unknown")
+    LOGGER.info("=== OCTOPUS POWER DOWN POWERWALL CONTROLLER %s ===", version)
+    LOGGER.info(
+        "Ready target_kwh=%.3f timeout_seconds=%s myenergi_poll_seconds=%s initial_grid_power_w=%.1f",
+        float(setting("EXPORT_TARGET_KWH", "0.85")),
+        setting("MAX_EXPORT_SECONDS", "420"),
+        setting("MYENERGI_POLL_SECONDS", "5"),
+        grid_power_w,
+    )
 
 
 def read_session() -> dict | None:
@@ -142,9 +181,10 @@ def restore(reason: str) -> None:
         call_service(
             "teslemetry",
             "time_of_use",
-            {"device_id": setting("TESLEMETRY_DEVICE_ID"), "tou_settings": baseline()},
+            {"device_id": setting("TESLEMETRY_DEVICE_ID"), "tou_settings": session["tariff_snapshot"]},
         )
     except Exception as err:
+        LOGGER.exception("Tariff restore request failed")
         errors.append(f"tariff restore: {err}")
     try:
         call_service(
@@ -153,6 +193,7 @@ def restore(reason: str) -> None:
             {"entity_id": setting("OPERATION_MODE_ENTITY"), "option": session["original_mode"]},
         )
     except Exception as err:
+        LOGGER.exception("Powerwall mode restore request failed")
         errors.append(f"mode restore: {err}")
     if errors:
         session["restore_error"] = "; ".join(errors)
@@ -174,7 +215,7 @@ def start_event(event_start: str, event_end: str | None) -> None:
     original_mode = state(setting("OPERATION_MODE_ENTITY"))["state"]
     initial_grid_power_w = myenergi_grid_power()
     initial_sample_at = datetime.now(UTC)
-    tariff = baseline()
+    tariff = live_tariff()
     temporary = json.loads(json.dumps(tariff))
     period = setting("EXPORT_RATE_PERIOD", "PARTIAL_PEAK")
     high_rate = float(setting("TEMPORARY_SELL_RATE", "3"))
@@ -191,6 +232,7 @@ def start_event(event_start: str, event_end: str | None) -> None:
         "last_grid_power_w": initial_grid_power_w,
         "last_power_sample_at": initial_sample_at.isoformat(),
         "original_mode": original_mode,
+        "tariff_snapshot": tariff,
         "target_export_kwh": float(setting("EXPORT_TARGET_KWH", "0.85")),
         "timeout_seconds": int(setting("MAX_EXPORT_SECONDS", "420")),
     }
@@ -208,6 +250,7 @@ def start_event(event_start: str, event_end: str | None) -> None:
             {"entity_id": setting("OPERATION_MODE_ENTITY"), "option": "autonomous"},
         )
     except Exception:
+        LOGGER.exception("Event start failed; attempting immediate restoration")
         restore("unable to start export")
         raise
     LOGGER.warning("Export started: %.3f kWh target", session["target_export_kwh"])
@@ -237,15 +280,27 @@ def monitor_event() -> None:
     elif not event_active:
         restore("Power Down calendar event ended")
     else:
-        LOGGER.info("Export %.3f/%.3f kWh", export, session["target_export_kwh"])
+        LOGGER.info(
+            "Export progress exported_kwh=%.3f target_kwh=%.3f grid_power_w=%.1f",
+            export,
+            session["target_export_kwh"],
+            grid_power_w,
+        )
 
 
 def main() -> None:
-    # Refuse to monitor events until the saved restore tariff is present and valid.
-    baseline()
+    try:
+        log_startup()
+    except Exception:
+        LOGGER.exception("Startup health check failed; controller will not monitor events")
+        raise
     # Never resume an incomplete export after process/container restart.
     if read_session() is not None:
-        restore("controller restart")
+        try:
+            restore("controller restart")
+        except Exception:
+            LOGGER.exception("Startup recovery restore failed")
+            raise
     idle_poll = int(setting("IDLE_POLL_SECONDS", "60"))
     active_poll = int(setting("MYENERGI_POLL_SECONDS", "5"))
     last_event_start: str | None = None
