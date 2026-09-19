@@ -1,3 +1,10 @@
+## [0.3.2](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.3.1...v0.3.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* pin compose image to v0.3.1 ([93d9954](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/93d9954ac38ff1c4289c06c8e7e20e3b00ee4cf4))
+
 ## [0.3.1](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.3.0...v0.3.1) (2026-09-19)
 
 
