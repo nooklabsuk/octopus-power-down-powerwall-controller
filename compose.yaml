@@ -1,6 +1,6 @@
 services:
   powerdown-controller:
-    image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:v0.3.0
+    image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:v0.3.1
     container_name: powerdown-controller
     env_file:
       - .env
