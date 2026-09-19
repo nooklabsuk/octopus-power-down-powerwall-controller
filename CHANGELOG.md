@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.2.3...v0.3.0) (2026-09-19)
+
+
+### Features
+
+* add Teslemetry tariff export utility ([0fd31fa](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/0fd31fa52b8ef86311dc4f5482ff4654599fc43f))
+
 ## [0.2.3](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.2.2...v0.2.3) (2026-09-19)
 
 
