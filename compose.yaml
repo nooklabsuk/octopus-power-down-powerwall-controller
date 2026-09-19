@@ -1,0 +1,10 @@
+services:
+  powerdown-controller:
+    build: .
+    container_name: powerdown-controller
+    env_file:
+      - .env
+    volumes:
+      - ./state:/state
+      - ./tariff/teslemetry-normal-tariff.json:/tariff/teslemetry-normal-tariff.json:ro
+    restart: unless-stopped

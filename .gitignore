@@ -1,0 +1,13 @@
+# Home Assistant credentials and site-specific controller configuration
+.env
+controller.env
+
+# A complete tariff can expose utility/account configuration.
+tariff/
+
+# Runtime session markers may contain event details and export readings.
+state/
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
