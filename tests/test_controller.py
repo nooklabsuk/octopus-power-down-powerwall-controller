@@ -69,6 +69,30 @@ class ControllerTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "sell_tariff"):
             controller.baseline()
 
+    def test_session_and_completed_event_round_trip(self) -> None:
+        self.assertIsNone(controller.read_session())
+        self.assertIsNone(controller.completed_event())
+
+        controller.write_session({"event_start": "event", "original_mode": "self_consumption"})
+        self.completed_path.write_text(json.dumps({"event_start": "completed-event"}))
+
+        self.assertEqual(controller.read_session()["event_start"], "event")
+        self.assertEqual(controller.completed_event(), "completed-event")
+
+    @patch.object(controller, "state")
+    def test_calendar_reads_active_event_times(self, state) -> None:
+        state.return_value = {
+            "state": "on",
+            "attributes": {"start_time": "start", "end_time": "end"},
+        }
+
+        self.assertEqual(controller.calendar(), (True, "start", "end"))
+
+    @patch.object(controller, "state", return_value={"state": "not-a-number"})
+    def test_numeric_state_rejects_invalid_state(self, state) -> None:
+        with self.assertRaisesRegex(RuntimeError, "numeric"):
+            controller.numeric_state("sensor.export")
+
     @patch.object(controller, "call_service")
     @patch.object(controller, "numeric_state", return_value=4.2)
     @patch.object(controller, "state")
@@ -141,6 +165,18 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(call_service.call_count, 2)
         self.assertEqual(call_service.call_args_list[0].args[:2], ("teslemetry", "time_of_use"))
         self.assertEqual(call_service.call_args_list[1].args[:2], ("select", "select_option"))
+
+    @patch.object(controller, "restore")
+    @patch.object(controller, "call_service", side_effect=RuntimeError("Tesla rejected request"))
+    @patch.object(controller, "numeric_state", return_value=4.2)
+    @patch.object(controller, "state", return_value={"state": "self_consumption"})
+    def test_start_event_restores_when_temporary_tariff_fails(
+        self, state, numeric_state, call_service, restore
+    ) -> None:
+        with self.assertRaisesRegex(RuntimeError, "Tesla rejected request"):
+            controller.start_event("event", "end")
+
+        self.assertEqual(restore.call_args.args[0], "unable to start export")
 
 
 if __name__ == "__main__":
