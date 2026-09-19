@@ -11,3 +11,5 @@ state/
 # Python build artifacts
 __pycache__/
 *.py[cod]
+.coverage
+htmlcov/
