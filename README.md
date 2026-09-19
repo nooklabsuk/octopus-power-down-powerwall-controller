@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/ci.yml)
 [![Security](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/security.yml/badge.svg)](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/actions/workflows/security.yml)
+[![Coverage](https://codecov.io/gh/nooklabsuk/octopus-power-down-powerwall-controller/branch/main/graph/badge.svg)](https://codecov.io/gh/nooklabsuk/octopus-power-down-powerwall-controller)
 [![Latest release](https://img.shields.io/github/v/release/nooklabsuk/octopus-power-down-powerwall-controller?display_name=tag&sort=semver)](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-required-41BDF5?logo=home-assistant)](https://www.home-assistant.io/)
@@ -108,8 +109,8 @@ the restoration reason during an active event.
 
 ### Prebuilt Images
 
-Each GitHub release publishes a multi-architecture image for `linux/amd64` and
-`linux/arm64` to GitHub Container Registry:
+Each semantic GitHub release publishes a multi-architecture image for
+`linux/amd64` and `linux/arm64` to GitHub Container Registry:
 
 ```text
 ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:<version>
