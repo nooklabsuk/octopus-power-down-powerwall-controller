@@ -43,7 +43,7 @@ When the configured Octopus Power Down calendar becomes `on`, the controller:
 3. Applies a complete temporary Tesla tariff with a configured higher sell rate.
 4. Switches the Powerwall to Tesla Time-Based Control (`autonomous`).
 5. Polls the grid-export energy meter until a capped export target is reached.
-6. Restores the exact saved tariff and original Powerwall mode.
+6. Re-submits the saved tariff and verifies the original Powerwall mode returns.
 
 The default target is **0.85 kWh**. It deliberately leaves margin below a 1 kWh
 maximum for meter sampling and Tesla API latency. The timeout is only a failsafe,
@@ -133,7 +133,7 @@ ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:<version>
 For example, replace `build: .` in `compose.yaml` with a pinned release image:
 
 ```yaml
-image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:0.1.0
+image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:v0.1.0
 ```
 
 Do not use `latest` for unattended energy control. Pin a tested release version.
@@ -164,6 +164,11 @@ The controller never builds a tariff from scratch. It modifies an in-memory copy
 of your complete saved baseline, then submits that baseline again to restore the
 normal configuration. Use `tools/export_tariff.py` in the Quick Start to export
 the baseline from Teslemetry diagnostics.
+
+Tesla/Teslemetry accepts the restore request asynchronously. The controller
+verifies that the original operation mode returns before clearing an active
+session; review the Tesla app or Teslemetry tariff entities after a first live
+event to confirm your tariff has also returned as expected.
 
 Tesla expects a complete valid schedule, not a partial tariff fragment.
 
