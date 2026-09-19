@@ -6,5 +6,5 @@ services:
       - .env
     volumes:
       - ./state:/state
-      - ./tariff/teslemetry-normal-tariff.json:/tariff/teslemetry-normal-tariff.json:ro
+      - ./tariff:/tariff:ro
     restart: unless-stopped

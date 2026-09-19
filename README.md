@@ -103,8 +103,15 @@ because an upcoming Power Down event is visible on a calendar.
 5. Restrict local secrets and tariff data:
 
    ```sh
-   chmod 600 .env tariff/teslemetry-normal-tariff.json
+   chmod 600 .env
+   chmod 755 tariff
+   chmod 644 tariff/teslemetry-normal-tariff.json
    ```
+
+   The container runs as an unprivileged user and mounts the whole `tariff/`
+   directory read-only. The tariff file must therefore be readable by that user.
+   It contains tariff configuration, not credentials; keep the directory ignored
+   by Git and do not publish it.
 
 6. Start the controller:
 
@@ -173,6 +180,8 @@ event to confirm your tariff has also returned as expected.
 Tesla expects a complete valid schedule, not a partial tariff fragment.
 
 Do not commit the tariff file. It may reveal utility and account configuration.
+If the baseline is missing or invalid, the container exits at startup rather than
+waiting until an event to fail.
 
 ## How It Stops
 

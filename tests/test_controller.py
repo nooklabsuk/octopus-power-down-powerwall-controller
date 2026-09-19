@@ -71,6 +71,15 @@ class ControllerTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "sell_tariff"):
             controller.baseline()
 
+    @patch.object(controller, "time")
+    def test_main_fails_before_monitoring_when_baseline_is_invalid(self, time) -> None:
+        self.tariff_path.write_text(json.dumps({"name": "invalid"}))
+
+        with self.assertRaisesRegex(RuntimeError, "sell_tariff"):
+            controller.main()
+
+        time.sleep.assert_not_called()
+
     def test_session_and_completed_event_round_trip(self) -> None:
         self.assertIsNone(controller.read_session())
         self.assertIsNone(controller.completed_event())

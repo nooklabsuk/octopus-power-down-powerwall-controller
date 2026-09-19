@@ -186,6 +186,8 @@ def monitor_event() -> None:
 
 
 def main() -> None:
+    # Refuse to monitor events until the saved restore tariff is present and valid.
+    baseline()
     # Never resume an incomplete export after process/container restart.
     if read_session() is not None:
         restore("controller restart")
