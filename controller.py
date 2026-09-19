@@ -117,9 +117,15 @@ def restore(reason: str) -> None:
         session["restore_attempted_at"] = datetime.now(UTC).isoformat()
         write_session(session)
         raise RuntimeError(session["restore_error"])
+    for _ in range(6):
+        if state(setting("OPERATION_MODE_ENTITY"))["state"] == session["original_mode"]:
+            break
+        time.sleep(10)
+    else:
+        raise RuntimeError("Powerwall operation mode did not return to the original mode")
     COMPLETED_PATH.write_text(json.dumps({"event_start": session["event_start"]}) + "\n")
     STATE_PATH.unlink(missing_ok=True)
-    LOGGER.info("Restore requests accepted")
+    LOGGER.info("Restore verified: operation mode is %s", session["original_mode"])
 
 
 def start_event(event_start: str, event_end: str | None) -> None:

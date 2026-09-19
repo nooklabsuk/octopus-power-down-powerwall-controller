@@ -106,6 +106,23 @@ because an upcoming Power Down event is visible on a calendar.
 The controller emits an idle heartbeat every minute. It logs export progress and
 the restoration reason during an active event.
 
+### Prebuilt Images
+
+Each GitHub release publishes a multi-architecture image for `linux/amd64` and
+`linux/arm64` to GitHub Container Registry:
+
+```text
+ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:<version>
+```
+
+For example, replace `build: .` in `compose.yaml` with a pinned release image:
+
+```yaml
+image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:0.1.0
+```
+
+Do not use `latest` for unattended energy control. Pin a tested release version.
+
 ## Configuration
 
 Find Home Assistant entity IDs in **Developer Tools -> States**. For a device
@@ -156,7 +173,7 @@ not export a second time if the container restarts before the calendar turns off
 To stop an active export manually:
 
 ```sh
-docker compose run --rm powerdown-controller python /app/emergency_restore.py
+docker compose run --rm --entrypoint python powerdown-controller /app/emergency_restore.py
 ```
 
 This restores the saved tariff and original Powerwall mode from the persisted
