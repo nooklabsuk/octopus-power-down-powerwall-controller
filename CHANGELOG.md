@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.3.3...v0.4.0) (2026-09-19)
+
+
+### Features
+
+* measure Power Down export directly with Myenergi ([aa3b139](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/aa3b1396e91ab37dcdd15b7487d6d82214295a1b))
+
 ## [0.3.3](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.3.2...v0.3.3) (2026-09-19)
 
 
