@@ -6,10 +6,15 @@ import json
 import logging
 import os
 import time
+from asyncio import run, to_thread
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+import httpx
+from pymyenergi.client import MyenergiClient
+from pymyenergi.connection import Connection
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger("powerdown_controller")
@@ -51,11 +56,33 @@ def state(entity_id: str) -> dict:
     return result
 
 
-def numeric_state(entity_id: str) -> float:
-    try:
-        return float(state(entity_id)["state"])
-    except (KeyError, TypeError, ValueError) as err:
-        raise RuntimeError(f"{entity_id} has no numeric state") from err
+async def _read_myenergi_grid_power() -> float:
+    async with httpx.AsyncClient() as client:
+        connection = Connection(
+            setting("MYENERGI_USERNAME"),
+            setting("MYENERGI_PASSWORD"),
+            timeout=10,
+            asyncClient=client,
+        )
+        await to_thread(connection.checkAndUpdateToken)
+        myenergi = MyenergiClient(connection)
+        await myenergi.refresh()
+        return float(myenergi.power_grid)
+
+
+def myenergi_grid_power() -> float:
+    """Read current signed grid power directly from Myenergi's cloud API."""
+    return run(_read_myenergi_grid_power())
+
+
+def export_energy_kwh(
+    previous_grid_power_w: float, current_grid_power_w: float, elapsed_seconds: float
+) -> float:
+    """Integrate only the exporting part of a signed grid-power sample."""
+    sign = float(setting("MYENERGI_EXPORT_SIGN", "-1"))
+    previous_export_w = max(0.0, previous_grid_power_w * sign)
+    current_export_w = max(0.0, current_grid_power_w * sign)
+    return (previous_export_w + current_export_w) / 2 * elapsed_seconds / 3_600_000
 
 
 def call_service(domain: str, service: str, data: dict) -> None:
@@ -130,7 +157,8 @@ def restore(reason: str) -> None:
 
 def start_event(event_start: str, event_end: str | None) -> None:
     original_mode = state(setting("OPERATION_MODE_ENTITY"))["state"]
-    initial_export = numeric_state(setting("EXPORT_ENERGY_SENSOR"))
+    initial_grid_power_w = myenergi_grid_power()
+    initial_sample_at = datetime.now(UTC)
     tariff = baseline()
     temporary = json.loads(json.dumps(tariff))
     period = setting("EXPORT_RATE_PERIOD", "PARTIAL_PEAK")
@@ -143,8 +171,10 @@ def start_event(event_start: str, event_end: str | None) -> None:
     session = {
         "event_start": event_start,
         "event_end": event_end,
-        "started_at": datetime.now(UTC).isoformat(),
-        "initial_export_kwh": initial_export,
+        "started_at": initial_sample_at.isoformat(),
+        "exported_kwh": 0.0,
+        "last_grid_power_w": initial_grid_power_w,
+        "last_power_sample_at": initial_sample_at.isoformat(),
         "original_mode": original_mode,
         "target_export_kwh": float(setting("EXPORT_TARGET_KWH", "0.85")),
         "timeout_seconds": int(setting("MAX_EXPORT_SECONDS", "420")),
@@ -172,8 +202,18 @@ def monitor_event() -> None:
     session = read_session()
     if session is None:
         return
-    export = max(0.0, numeric_state(setting("EXPORT_ENERGY_SENSOR")) - session["initial_export_kwh"])
-    elapsed = datetime.now(UTC).timestamp() - datetime.fromisoformat(session["started_at"]).timestamp()
+    now = datetime.now(UTC)
+    grid_power_w = myenergi_grid_power()
+    if session["last_power_sample_at"] is not None:
+        elapsed_seconds = now.timestamp() - datetime.fromisoformat(session["last_power_sample_at"]).timestamp()
+        session["exported_kwh"] += export_energy_kwh(
+            session["last_grid_power_w"], grid_power_w, elapsed_seconds
+        )
+    session["last_grid_power_w"] = grid_power_w
+    session["last_power_sample_at"] = now.isoformat()
+    write_session(session)
+    export = session["exported_kwh"]
+    elapsed = now.timestamp() - datetime.fromisoformat(session["started_at"]).timestamp()
     event_active, _, _ = calendar()
     if export >= session["target_export_kwh"]:
         restore(f"measured export cap reached: {export:.3f} kWh")
@@ -192,7 +232,7 @@ def main() -> None:
     if read_session() is not None:
         restore("controller restart")
     idle_poll = int(setting("IDLE_POLL_SECONDS", "60"))
-    active_poll = int(setting("ACTIVE_POLL_SECONDS", "2"))
+    active_poll = int(setting("MYENERGI_POLL_SECONDS", "5"))
     last_event_start: str | None = None
     while True:
         try:

@@ -12,9 +12,16 @@ Experimental Home Assistant controller that makes a small, capped Tesla
 Powerwall 3 export during an active, opted-in Octopus Energy Power Down event.
 
 It uses the [Teslemetry](https://github.com/Teslemetry/hass-teslemetry) Home
-Assistant integration to temporarily apply a Time-Based Control tariff, switches
-the Powerwall to `autonomous`, measures grid export, then restores the original
-tariff and operation mode.
+Assistant integration to temporarily apply a Time-Based Control tariff, polls
+Myenergi current grid power directly to measure export, then restores the
+original tariff and operation mode.
+
+The controller deliberately does **not** use Myenergi Home Assistant sensor
+timestamps as its export cap. Cloud-polling integrations can delay or suppress
+unchanged entity state updates, which is unsafe when a Powerwall can export at
+high power. Instead, the controller uses the Myenergi hub serial number and API
+key to request current signed grid power itself and integrates the exporting
+portion locally at the configured polling interval.
 
 > [!WARNING]
 > This project controls battery behaviour. It can cause unexpected Powerwall
@@ -38,11 +45,12 @@ tariff and operation mode.
 
 When the configured Octopus Power Down calendar becomes `on`, the controller:
 
-1. Records the current cumulative grid-export meter and original Powerwall mode.
+1. Records direct Myenergi grid power and the original Powerwall mode.
 2. Persists that session state before changing Powerwall settings.
 3. Applies a complete temporary Tesla tariff with a configured higher sell rate.
 4. Switches the Powerwall to Tesla Time-Based Control (`autonomous`).
-5. Polls the grid-export energy meter until a capped export target is reached.
+5. Polls direct Myenergi grid power and integrates exported energy locally until
+   a capped target is reached.
 6. Re-submits the saved tariff and verifies the original Powerwall mode returns.
 
 The default target is **0.85 kWh**. It deliberately leaves margin below a 1 kWh
@@ -61,8 +69,8 @@ because an upcoming Power Down event is visible on a calendar.
 - Teslemetry Powerwall operation-mode entity with an `autonomous` option.
 - Octopus Energy Home Assistant integration with a Power Down calendar that is
   `on` only for an active event you joined.
-- A current cumulative **grid-export energy** meter in kWh. It should have
-  `state_class: total_increasing`; Myenergi `grid_export_today` is one example.
+- Myenergi hub serial number and API key. The controller polls current signed
+  grid power directly rather than relying on Home Assistant entity timestamps.
 - A complete, known-good Tesla `tariff_content_v2` baseline containing a nested
   `sell_tariff`.
 - A dedicated Home Assistant long-lived token.
@@ -77,8 +85,13 @@ because an upcoming Power Down event is visible on a calendar.
    cp .env.example .env
    ```
 
-3. Set every value in `.env`. It contains a Home Assistant token and is ignored
-   by Git.
+3. Set every value in `.env`. It contains a Home Assistant token and Myenergi
+   API key and is ignored by Git.
+
+   Get the Myenergi values from `myaccount.myenergi.com` under **Products**:
+   use the hub serial number for `MYENERGI_USERNAME` and generate an API key for
+   `MYENERGI_PASSWORD`. Do not reuse a copied Home Assistant integration
+   configuration or publish either value.
 
 4. Export your current Tesla tariff baseline:
 
@@ -140,7 +153,7 @@ ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:<version>
 For example, replace `build: .` in `compose.yaml` with a pinned release image:
 
 ```yaml
-image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:v0.1.0
+image: ghcr.io/nooklabsuk/octopus-power-down-powerwall-controller:v0.4.0
 ```
 
 Do not use `latest` for unattended energy control. Pin a tested release version.
@@ -158,8 +171,11 @@ UUID at the end of the browser URL is its Home Assistant device ID.
 | `TESLEMETRY_CONFIG_ENTRY_ID` | Config-entry ID for the Teslemetry integration. Find it in the browser URL after opening **Settings -> Devices & services -> Teslemetry**. |
 | `TESLEMETRY_DEVICE_ID` | Home Assistant device ID for the Teslemetry Powerwall device. |
 | `POWER_DOWN_CALENDAR` | Calendar entity that is `on` during an active joined event. |
-| `EXPORT_ENERGY_SENSOR` | Live cumulative grid-export sensor in kWh, not an instantaneous W/kW sensor. |
 | `OPERATION_MODE_ENTITY` | Teslemetry Powerwall operation-mode `select` entity. |
+| `MYENERGI_USERNAME` | Myenergi hub serial number. |
+| `MYENERGI_PASSWORD` | Myenergi API key generated in the Myenergi account portal. It is used for direct current-power polling by this container. |
+| `MYENERGI_EXPORT_SIGN` | Signed-power export convention. Normally `-1`: Myenergi grid power is negative while exporting. |
+| `MYENERGI_POLL_SECONDS` | Direct Myenergi cloud polling interval. Default: `5`; lower values increase cloud API use. |
 | `EXPORT_TARGET_KWH` | Additional event export target. Use `0.85` for a 1 kWh maximum. |
 | `MAX_EXPORT_SECONDS` | Hard failsafe duration. Default: 420 seconds. |
 | `EXPORT_RATE_PERIOD` | Existing tariff period to temporarily alter, for example `PARTIAL_PEAK`. |

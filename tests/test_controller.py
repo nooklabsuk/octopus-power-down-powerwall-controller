@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from urllib.error import URLError
 
 
@@ -26,6 +26,14 @@ def tariff() -> dict:
             "seasons": {"Summer": {}},
         },
     }
+
+
+class AsyncClientContext:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
 
 
 class ControllerTest(unittest.TestCase):
@@ -49,8 +57,10 @@ class ControllerTest(unittest.TestCase):
                 "HA_TOKEN": "test-token",
                 "TESLEMETRY_DEVICE_ID": "test-device",
                 "POWER_DOWN_CALENDAR": "calendar.power_down",
-                "EXPORT_ENERGY_SENSOR": "sensor.export_today",
                 "OPERATION_MODE_ENTITY": "select.operation_mode",
+                "MYENERGI_USERNAME": "test-hub",
+                "MYENERGI_PASSWORD": "test-key",
+                "MYENERGI_EXPORT_SIGN": "-1",
                 "EXPORT_TARGET_KWH": "0.85",
                 "MAX_EXPORT_SECONDS": "420",
                 "EXPORT_RATE_PERIOD": "PARTIAL_PEAK",
@@ -99,10 +109,62 @@ class ControllerTest(unittest.TestCase):
 
         self.assertEqual(controller.calendar(), (True, "start", "end"))
 
-    @patch.object(controller, "state", return_value={"state": "not-a-number"})
-    def test_numeric_state_rejects_invalid_state(self, state) -> None:
-        with self.assertRaisesRegex(RuntimeError, "numeric"):
-            controller.numeric_state("sensor.export")
+    def test_integrates_signed_export_power(self) -> None:
+        self.assertAlmostEqual(controller.export_energy_kwh(-10_000, -10_000, 5), 0.0138889)
+        self.assertEqual(controller.export_energy_kwh(1_000, 1_000, 5), 0)
+
+    @patch.object(controller, "_read_myenergi_grid_power", new_callable=AsyncMock, return_value=-1_234)
+    def test_reads_current_myenergi_grid_power_directly(self, read_power) -> None:
+        self.assertEqual(controller.myenergi_grid_power(), -1_234)
+        read_power.assert_awaited_once()
+
+    @patch.object(controller, "to_thread", new_callable=AsyncMock)
+    @patch.object(controller, "MyenergiClient")
+    @patch.object(controller, "Connection")
+    @patch.object(controller.httpx, "AsyncClient", return_value=AsyncClientContext())
+    def test_direct_myenergi_read_refreshes_current_power(
+        self, async_client, connection, myenergi_client, to_thread
+    ) -> None:
+        client = myenergi_client.return_value
+        client.power_grid = -4_200
+        client.refresh = AsyncMock()
+
+        self.assertEqual(__import__("asyncio").run(controller._read_myenergi_grid_power()), -4_200)
+
+        connection.assert_called_once_with(
+            "test-hub", "test-key", timeout=10, asyncClient=async_client.return_value
+        )
+        to_thread.assert_awaited_once_with(connection.return_value.checkAndUpdateToken)
+        client.refresh.assert_awaited_once()
+
+    @patch.object(controller, "datetime")
+    @patch.object(controller, "restore")
+    @patch.object(controller, "calendar", return_value=(True, None, None))
+    @patch.object(controller, "myenergi_grid_power", return_value=-10_000)
+    def test_monitor_integrates_direct_power_samples(
+        self, myenergi_grid_power, calendar, restore, datetime
+    ) -> None:
+        datetime.now.return_value.isoformat.return_value = "2026-01-01T00:00:05+00:00"
+        datetime.now.return_value.timestamp.return_value = 1_767_225_605
+        datetime.fromisoformat.return_value.timestamp.side_effect = [1_767_225_600, 1_767_225_600]
+        controller.write_session(
+            {
+                "event_start": "event",
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "exported_kwh": 0,
+                "last_grid_power_w": -10_000,
+                "last_power_sample_at": "2026-01-01T00:00:00+00:00",
+                "target_export_kwh": 0.85,
+                "timeout_seconds": 420,
+                "original_mode": "self_consumption",
+            }
+        )
+
+        controller.monitor_event()
+
+        session = controller.read_session()
+        self.assertAlmostEqual(session["exported_kwh"], 0.0138889)
+        restore.assert_not_called()
 
     @patch.object(controller, "urlopen", side_effect=URLError("offline"))
     def test_request_wraps_home_assistant_network_failure(self, urlopen) -> None:
@@ -110,17 +172,18 @@ class ControllerTest(unittest.TestCase):
             controller.request("/api/states/sensor.export")
 
     @patch.object(controller, "call_service")
-    @patch.object(controller, "numeric_state", return_value=4.2)
+    @patch.object(controller, "myenergi_grid_power", return_value=0)
     @patch.object(controller, "state")
     def test_start_event_persists_before_powerwall_writes(
-        self, state, numeric_state, call_service
+        self, state, myenergi_grid_power, call_service
     ) -> None:
         state.return_value = {"state": "self_consumption"}
 
         controller.start_event("2026-09-20T18:00:00+01:00", "2026-09-20T19:00:00+01:00")
 
         session = json.loads(self.state_path.read_text())
-        self.assertEqual(session["initial_export_kwh"], 4.2)
+        self.assertEqual(session["exported_kwh"], 0)
+        self.assertEqual(session["last_grid_power_w"], 0)
         self.assertEqual(session["original_mode"], "self_consumption")
         self.assertEqual(call_service.call_count, 2)
         self.assertEqual(call_service.call_args_list[0].args[:2], ("teslemetry", "time_of_use"))
@@ -128,13 +191,15 @@ class ControllerTest(unittest.TestCase):
 
     @patch.object(controller, "restore")
     @patch.object(controller, "calendar", return_value=(True, None, None))
-    @patch.object(controller, "numeric_state", return_value=5.06)
-    def test_monitor_restores_at_export_cap(self, numeric_state, calendar, restore) -> None:
+    @patch.object(controller, "myenergi_grid_power", return_value=-10_500)
+    def test_monitor_restores_at_export_cap(self, myenergi_grid_power, calendar, restore) -> None:
         controller.write_session(
             {
                 "event_start": "event",
-                "started_at": "2026-09-20T18:00:00+00:00",
-                "initial_export_kwh": 4.2,
+                "started_at": "2000-01-01T00:00:00+00:00",
+                "exported_kwh": 0.85,
+                "last_grid_power_w": -10_500,
+                "last_power_sample_at": "2000-01-01T00:00:00+00:00",
                 "target_export_kwh": 0.85,
                 "timeout_seconds": 420,
                 "original_mode": "self_consumption",
@@ -147,13 +212,15 @@ class ControllerTest(unittest.TestCase):
 
     @patch.object(controller, "restore")
     @patch.object(controller, "calendar", return_value=(False, None, None))
-    @patch.object(controller, "numeric_state", return_value=4.3)
-    def test_monitor_restores_when_calendar_event_ends(self, numeric_state, calendar, restore) -> None:
+    @patch.object(controller, "myenergi_grid_power", return_value=0)
+    def test_monitor_restores_when_calendar_event_ends(self, myenergi_grid_power, calendar, restore) -> None:
         controller.write_session(
             {
                 "event_start": "event",
                 "started_at": "2999-01-01T00:00:00+00:00",
-                "initial_export_kwh": 4.2,
+                "exported_kwh": 0,
+                "last_grid_power_w": 0,
+                "last_power_sample_at": "2999-01-01T00:00:00+00:00",
                 "target_export_kwh": 0.85,
                 "timeout_seconds": 420,
                 "original_mode": "self_consumption",
@@ -196,13 +263,15 @@ class ControllerTest(unittest.TestCase):
 
     @patch.object(controller, "restore")
     @patch.object(controller, "calendar", return_value=(True, None, None))
-    @patch.object(controller, "numeric_state", return_value=4.3)
-    def test_monitor_restores_at_timeout(self, numeric_state, calendar, restore) -> None:
+    @patch.object(controller, "myenergi_grid_power", return_value=0)
+    def test_monitor_restores_at_timeout(self, myenergi_grid_power, calendar, restore) -> None:
         controller.write_session(
             {
                 "event_start": "event",
                 "started_at": "2000-01-01T00:00:00+00:00",
-                "initial_export_kwh": 4.2,
+                "exported_kwh": 0,
+                "last_grid_power_w": 0,
+                "last_power_sample_at": "2000-01-01T00:00:00+00:00",
                 "target_export_kwh": 0.85,
                 "timeout_seconds": 420,
                 "original_mode": "self_consumption",
@@ -222,10 +291,10 @@ class ControllerTest(unittest.TestCase):
 
     @patch.object(controller, "restore")
     @patch.object(controller, "call_service", side_effect=RuntimeError("Tesla rejected request"))
-    @patch.object(controller, "numeric_state", return_value=4.2)
+    @patch.object(controller, "myenergi_grid_power", return_value=0)
     @patch.object(controller, "state", return_value={"state": "self_consumption"})
     def test_start_event_restores_when_temporary_tariff_fails(
-        self, state, numeric_state, call_service, restore
+        self, state, myenergi_grid_power, call_service, restore
     ) -> None:
         with self.assertRaisesRegex(RuntimeError, "Tesla rejected request"):
             controller.start_event("event", "end")
