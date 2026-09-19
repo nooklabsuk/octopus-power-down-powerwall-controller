@@ -1,10 +1,13 @@
 import importlib.util
 import json
 import os
+import runpy
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import URLError
 
 
 MODULE_PATH = Path(__file__).parents[1] / "controller.py"
@@ -93,6 +96,11 @@ class ControllerTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "numeric"):
             controller.numeric_state("sensor.export")
 
+    @patch.object(controller, "urlopen", side_effect=URLError("offline"))
+    def test_request_wraps_home_assistant_network_failure(self, urlopen) -> None:
+        with self.assertRaisesRegex(RuntimeError, "Home Assistant GET"):
+            controller.request("/api/states/sensor.export")
+
     @patch.object(controller, "call_service")
     @patch.object(controller, "numeric_state", return_value=4.2)
     @patch.object(controller, "state")
@@ -165,6 +173,44 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(call_service.call_count, 2)
         self.assertEqual(call_service.call_args_list[0].args[:2], ("teslemetry", "time_of_use"))
         self.assertEqual(call_service.call_args_list[1].args[:2], ("select", "select_option"))
+
+    @patch.object(controller, "time")
+    @patch.object(controller, "state", return_value={"state": "autonomous"})
+    @patch.object(controller, "call_service")
+    def test_restore_preserves_session_when_mode_never_returns(self, call_service, state, time) -> None:
+        controller.write_session({"event_start": "event", "original_mode": "self_consumption"})
+
+        with self.assertRaisesRegex(RuntimeError, "did not return"):
+            controller.restore("test")
+
+        self.assertTrue(self.state_path.exists())
+        self.assertFalse(self.completed_path.exists())
+
+    @patch.object(controller, "restore")
+    @patch.object(controller, "calendar", return_value=(True, None, None))
+    @patch.object(controller, "numeric_state", return_value=4.3)
+    def test_monitor_restores_at_timeout(self, numeric_state, calendar, restore) -> None:
+        controller.write_session(
+            {
+                "event_start": "event",
+                "started_at": "2000-01-01T00:00:00+00:00",
+                "initial_export_kwh": 4.2,
+                "target_export_kwh": 0.85,
+                "timeout_seconds": 420,
+                "original_mode": "self_consumption",
+            }
+        )
+
+        controller.monitor_event()
+
+        self.assertIn("hard timeout reached", restore.call_args.args[0])
+
+    def test_emergency_restore_calls_controller_restore(self) -> None:
+        with patch.dict(sys.modules, {"controller": controller}):
+            with patch.object(controller, "restore") as restore:
+                runpy.run_path(Path(__file__).parents[1] / "emergency_restore.py", run_name="__main__")
+
+        self.assertEqual(restore.call_args.args[0], "manual emergency restore")
 
     @patch.object(controller, "restore")
     @patch.object(controller, "call_service", side_effect=RuntimeError("Tesla rejected request"))
