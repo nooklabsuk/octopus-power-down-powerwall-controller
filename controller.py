@@ -314,7 +314,9 @@ def main() -> None:
             raise
     idle_poll = int(setting("IDLE_POLL_SECONDS", "60"))
     active_poll = int(setting("MYENERGI_POLL_SECONDS", "5"))
+    idle_log_interval = int(setting("IDLE_LOG_INTERVAL_SECONDS", "3600"))
     last_event_start: str | None = None
+    last_idle_log_at: datetime | None = None
     while True:
         try:
             if read_session() is not None:
@@ -330,20 +332,30 @@ def main() -> None:
                 # it for the rest of its active window.
                 start_event(event_start, event_end)
                 last_event_start = event_start
+                last_idle_log_at = None
                 time.sleep(active_poll)
                 continue
+            now = datetime.now(UTC)
+            due_to_log = (
+                last_idle_log_at is None
+                or (now - last_idle_log_at).total_seconds() >= idle_log_interval
+            )
             if not event_active:
                 last_event_start = None
                 COMPLETED_PATH.unlink(missing_ok=True)
-                LOGGER.info("Idle: no active Power Down event")
+                if due_to_log:
+                    LOGGER.info("Idle: no active Power Down event")
+                    last_idle_log_at = now
             elif event_start == last_event_start:
                 # This event was already started (and likely already capped
                 # and restored). Log this explicitly so the container isn't
                 # silently quiet for the remainder of the calendar event.
-                LOGGER.info(
-                    "Event already handled; waiting for calendar event to end: %s",
-                    event_end,
-                )
+                if due_to_log:
+                    LOGGER.info(
+                        "Event already handled; waiting for calendar event to end: %s",
+                        event_end,
+                    )
+                    last_idle_log_at = now
         except Exception:
             LOGGER.exception("Controller cycle failed")
             try:

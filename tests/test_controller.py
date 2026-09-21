@@ -172,6 +172,47 @@ class ControllerTest(unittest.TestCase):
         )
         restore.assert_called_once_with("controller error")
 
+    @patch.object(controller, "wait_for_startup_health")
+    @patch.object(controller, "datetime")
+    @patch.object(controller, "time")
+    @patch.object(controller, "LOGGER")
+    @patch.object(controller, "completed_event", return_value=None)
+    @patch.object(controller, "calendar", return_value=(False, None, None))
+    @patch.object(controller, "read_session", return_value=None)
+    def test_idle_log_is_throttled_to_idle_log_interval(
+        self,
+        read_session,
+        calendar,
+        completed_event,
+        logger,
+        time,
+        datetime_mock,
+        wait_for_startup_health,
+    ) -> None:
+        from datetime import UTC, datetime as real_datetime
+
+        base = real_datetime(2026, 1, 1, tzinfo=UTC)
+        # Two cycles within the same hour (should log once), then a third
+        # cycle an hour later (should log again).
+        datetime_mock.now.side_effect = [
+            base,
+            base.replace(minute=30),
+            base.replace(hour=1, minute=1),
+            SystemExit,
+        ]
+        time.sleep.side_effect = None
+
+        with patch.dict(os.environ, {"IDLE_LOG_INTERVAL_SECONDS": "3600"}):
+            with self.assertRaises(SystemExit):
+                controller.main()
+
+        idle_logs = [
+            call
+            for call in logger.info.call_args_list
+            if call.args and call.args[0] == "Idle: no active Power Down event"
+        ]
+        self.assertEqual(len(idle_logs), 2)
+
     @patch.object(controller, "request", return_value={"data": {"energysites": [{"info": {}}]}})
     def test_live_tariff_rejects_missing_sell_tariff(self, request) -> None:
         with self.assertRaisesRegex(RuntimeError, "sell_tariff"):

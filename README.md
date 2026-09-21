@@ -14,8 +14,11 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-required-41BDF5?logo=home-assistant)](https://www.home-assistant.io/)
 [![Teslemetry](https://img.shields.io/badge/Teslemetry-required-cc0000)](https://github.com/Teslemetry/hass-teslemetry)
 
-Experimental Home Assistant controller that makes a small, capped Tesla
-Powerwall 3 export during an active, opted-in Octopus Energy Power Down event.
+Home Assistant controller that makes a small, capped Tesla Powerwall 3 export
+during an active, opted-in Octopus Energy Power Down event. Validated against
+a real, live Power Down event: the controller detected the active session,
+applied the temporary tariff and operating mode, capped export at the
+configured target, and automatically restored the original tariff and mode.
 
 It uses the [Teslemetry](https://github.com/Teslemetry/hass-teslemetry) Home
 Assistant integration to temporarily apply a Time-Based Control tariff, polls
@@ -32,9 +35,9 @@ portion locally at the configured polling interval.
 > [!WARNING]
 > This project controls battery behaviour. It can cause unexpected Powerwall
 > discharge, affect backup capacity, or fail to restore a tariff or operating
-> mode. It is experimental, unaffiliated with Tesla, Octopus, Teslemetry, or
-> Myenergi, and is provided without warranty. Use it entirely at your own risk.
-> Test under observation before any unattended use.
+> mode. It is unaffiliated with Tesla, Octopus, Teslemetry, or Myenergi, and
+> is provided without warranty. Use it entirely at your own risk. Test under
+> observation before any unattended use.
 
 ## Contents
 
@@ -170,6 +173,7 @@ UUID at the end of the browser URL is its Home Assistant device ID.
 | `MYENERGI_EXPORT_SIGN` | Signed-power export convention. Normally `-1`: Myenergi grid power is negative while exporting. |
 | `MYENERGI_POLL_SECONDS` | Direct Myenergi cloud polling interval. Default: `5`; lower values increase cloud API use. |
 | `STARTUP_RETRY_SECONDS` | Retry delay after a failed startup Myenergi health check. Default: `30`. |
+| `IDLE_LOG_INTERVAL_SECONDS` | Minimum time between repeated idle-state log lines (calendar is still checked every `IDLE_POLL_SECONDS` regardless). Default: `3600` (once per hour). |
 | `EXPORT_TARGET_KWH` | Additional event export target. Use `0.85` for a 1 kWh maximum. |
 | `MAX_EXPORT_SECONDS` | Hard failsafe duration. Default: 420 seconds. |
 | `EXPORT_RATE_PERIOD` | Existing tariff period to temporarily alter, for example `PARTIAL_PEAK`. |
