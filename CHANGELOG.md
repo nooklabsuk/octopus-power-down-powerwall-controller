@@ -1,3 +1,10 @@
+## [0.6.1](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.6.0...v0.6.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* prevent silent event retry-skip and permission-denied state volume ([8a1c933](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/8a1c9332b86fa5947d61c03f113ccc62fbee50cc))
+
 # [0.6.0](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.5.0...v0.6.0) (2026-09-19)
 
 
