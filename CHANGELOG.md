@@ -1,3 +1,10 @@
+## [0.6.2](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.6.1...v0.6.2) (2026-09-21)
+
+
+### Bug Fixes
+
+* throttle idle-state log lines to once per hour by default ([a82850e](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/commit/a82850e709925f2ffaa3ae717e99fe8074986689))
+
 ## [0.6.1](https://github.com/nooklabsuk/octopus-power-down-powerwall-controller/compare/v0.6.0...v0.6.1) (2026-09-21)
 
 
