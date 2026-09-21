@@ -119,6 +119,59 @@ class ControllerTest(unittest.TestCase):
         self.assertIn("v1.2.3", str(logger.info.call_args_list))
         self.assertNotIn("test-key", str(logger.info.call_args))
 
+    @patch.object(controller, "time")
+    @patch.object(controller, "LOGGER")
+    @patch.object(controller, "log_startup", side_effect=[RuntimeError("DNS unavailable"), None])
+    def test_startup_health_retries_without_exiting(self, log_startup, logger, time) -> None:
+        controller.wait_for_startup_health()
+
+        self.assertEqual(log_startup.call_count, 2)
+        logger.exception.assert_called_once()
+        time.sleep.assert_called_once_with(30)
+
+    @patch.object(controller, "wait_for_startup_health")
+    @patch.object(controller, "time")
+    @patch.object(controller, "restore")
+    @patch.object(controller, "start_event")
+    @patch.object(controller, "completed_event", return_value=None)
+    @patch.object(controller, "calendar")
+    @patch.object(controller, "read_session", return_value=None)
+    def test_main_retries_same_event_after_start_event_failure(
+        self,
+        read_session,
+        calendar,
+        completed_event,
+        start_event,
+        restore,
+        time,
+        wait_for_startup_health,
+    ) -> None:
+        event_start = "2026-09-21T18:00:00+01:00"
+        event_end = "2026-09-21T19:00:00+01:00"
+        calendar.return_value = (True, event_start, event_end)
+        # First attempt fails (e.g. a transient state-write permission
+        # error), second attempt succeeds and must not be retried again.
+        start_event.side_effect = [RuntimeError("permission denied"), None]
+        # Break out of main()'s infinite loop once the retry has been
+        # observed and the successful call's sleep has happened, since
+        # main() intentionally catches ordinary Exceptions and keeps going.
+        time.sleep.side_effect = [None, None, SystemExit]
+
+        with self.assertRaises(SystemExit):
+            controller.main()
+
+        # start_event must be retried once for the *same* event after it
+        # raised, instead of being silently skipped for the rest of its
+        # active window, and must not be called again once it has succeeded.
+        self.assertEqual(
+            start_event.call_args_list,
+            [
+                ((event_start, event_end),),
+                ((event_start, event_end),),
+            ],
+        )
+        restore.assert_called_once_with("controller error")
+
     @patch.object(controller, "request", return_value={"data": {"energysites": [{"info": {}}]}})
     def test_live_tariff_rejects_missing_sell_tariff(self, request) -> None:
         with self.assertRaisesRegex(RuntimeError, "sell_tariff"):

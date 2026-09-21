@@ -119,6 +119,11 @@ container version, export target, timeout, polling interval, tariff name/utility
 and a read-only direct Myenergi grid-power health check. Logs never include API
 keys, tokens, serial numbers, account IDs, or full entity IDs.
 
+If Myenergi is temporarily unreachable during startup, the container stays up,
+logs the full connection error, and retries after `STARTUP_RETRY_SECONDS`.
+It does not monitor or act on Power Down events until a direct Myenergi health
+check succeeds.
+
 ### Prebuilt Images
 
 Each semantic GitHub release publishes a multi-architecture image for
@@ -164,6 +169,7 @@ UUID at the end of the browser URL is its Home Assistant device ID.
 | `MYENERGI_PASSWORD` | Myenergi API key generated in the Myenergi account portal. It is used for direct current-power polling by this container. |
 | `MYENERGI_EXPORT_SIGN` | Signed-power export convention. Normally `-1`: Myenergi grid power is negative while exporting. |
 | `MYENERGI_POLL_SECONDS` | Direct Myenergi cloud polling interval. Default: `5`; lower values increase cloud API use. |
+| `STARTUP_RETRY_SECONDS` | Retry delay after a failed startup Myenergi health check. Default: `30`. |
 | `EXPORT_TARGET_KWH` | Additional event export target. Use `0.85` for a 1 kWh maximum. |
 | `MAX_EXPORT_SECONDS` | Hard failsafe duration. Default: 420 seconds. |
 | `EXPORT_RATE_PERIOD` | Existing tariff period to temporarily alter, for example `PARTIAL_PEAK`. |

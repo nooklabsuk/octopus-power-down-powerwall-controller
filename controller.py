@@ -150,6 +150,21 @@ def log_startup() -> None:
     )
 
 
+def wait_for_startup_health() -> None:
+    """Block monitoring until direct Myenergi health checks succeed."""
+    retry_seconds = int(setting("STARTUP_RETRY_SECONDS", "30"))
+    while True:
+        try:
+            log_startup()
+            return
+        except Exception:
+            LOGGER.exception(
+                "Startup health check failed; retrying in %s seconds without monitoring events",
+                retry_seconds,
+            )
+            time.sleep(retry_seconds)
+
+
 def read_session() -> dict | None:
     return json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else None
 
@@ -289,11 +304,7 @@ def monitor_event() -> None:
 
 
 def main() -> None:
-    try:
-        log_startup()
-    except Exception:
-        LOGGER.exception("Startup health check failed; controller will not monitor events")
-        raise
+    wait_for_startup_health()
     # Never resume an incomplete export after process/container restart.
     if read_session() is not None:
         try:
@@ -312,14 +323,27 @@ def main() -> None:
                 continue
             event_active, event_start, event_end = calendar()
             if event_active and event_start and event_start not in {last_event_start, completed_event()}:
-                last_event_start = event_start
+                # Only mark this event as handled once start_event() actually
+                # succeeds. If it raises (e.g. a transient state-write or
+                # Tesla API failure), leave last_event_start unset so the next
+                # cycle retries the same event instead of silently skipping
+                # it for the rest of its active window.
                 start_event(event_start, event_end)
+                last_event_start = event_start
                 time.sleep(active_poll)
                 continue
             if not event_active:
                 last_event_start = None
                 COMPLETED_PATH.unlink(missing_ok=True)
                 LOGGER.info("Idle: no active Power Down event")
+            elif event_start == last_event_start:
+                # This event was already started (and likely already capped
+                # and restored). Log this explicitly so the container isn't
+                # silently quiet for the remainder of the calendar event.
+                LOGGER.info(
+                    "Event already handled; waiting for calendar event to end: %s",
+                    event_end,
+                )
         except Exception:
             LOGGER.exception("Controller cycle failed")
             try:
